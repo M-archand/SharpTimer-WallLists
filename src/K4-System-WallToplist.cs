@@ -71,7 +71,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 	public required PluginConfig Config { get; set; } = new PluginConfig();
 	public static PluginCapability<IK4WorldTextSharedAPI> Capability_SharedAPI { get; } = new("k4-worldtext:sharedapi");
 
-	private List<int> _currentTopLists = new();
+	private readonly List<int> _currentTopLists = new();
 	private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
 	public void OnConfigParsed(PluginConfig config)
@@ -84,7 +84,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	public override void OnAllPluginsLoaded(bool hotReload)
 	{
-		AddTimer(3, LoadWorldTextFromFile);
+		AddTimer(3, () => LoadWorldTextFromFile(Server.MapName));
 
 		if (Config.TimeBasedUpdate)
 		{
@@ -99,12 +99,13 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		RegisterListener<Listeners.OnMapStart>((mapName) =>
 		{
-			AddTimer(1, LoadWorldTextFromFile);
+			var mapNameString = mapName;
+			AddTimer(1, () => LoadWorldTextFromFile(mapNameString));
 		});
 
 		RegisterListener<Listeners.OnMapEnd>(() =>
 		{
-			_currentTopLists.Clear();
+			ClearCurrentTopLists();
 		});
 	}
 
@@ -114,30 +115,32 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		{
 			Capability_SharedAPI.Get()?.RemoveWorldText(messageID);
 		}
-		_currentTopLists.Clear();
+		ClearCurrentTopLists();
 		_updateTimer?.Kill();
 	}
 
-	[ConsoleCommand("css_k4toplist", "Sets up the wall toplist of K4-System")]
+	[ConsoleCommand("css_maplist", "Sets up the map top list")]
 	[RequiresPermissions("@css/root")]
 	public void OnToplistAdd(CCSPlayerController player, CommandInfo command)
 	{
 		var checkAPI = Capability_SharedAPI.Get();
 		if (checkAPI is null)
 		{
-			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}K4-TopList {ChatColors.Silver}] {ChatColors.LightRed}Failed to get the shared API.");
+			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.LightRed}Failed to get the shared API.");
 			return;
 		}
 
-		Task.Run(async () =>
+		var mapName = Server.MapName;
+
+		_ = Task.Run(async () =>
 		{
-			var topList = await GetTopPlayersAsync(Config.TopCount);
+			var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
 			var linesList = GetTopListTextLines(topList);
 
 			Server.NextWorldUpdate(() =>
 			{
 				int messageID = checkAPI.AddWorldTextAtPlayer(player, TextPlacement.Wall, linesList);
-				_currentTopLists.Add(messageID);
+				AddToCurrentTopLists(messageID);
 
 				var lineList = checkAPI.GetWorldTextLineEntities(messageID);
 				if (lineList?.Count > 0)
@@ -162,45 +165,57 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		});
 	}
 
-	[ConsoleCommand("css_k4toprem", "Removes the closest wall toplist of K4-System")]
+	[ConsoleCommand("css_maprem", "Removes the closest list")]
 	[RequiresPermissions("@css/root")]
 	public void OnToplistRemove(CCSPlayerController player, CommandInfo command)
 	{
 		var checkAPI = Capability_SharedAPI.Get();
 		if (checkAPI is null)
 		{
-			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}K4-TopList {ChatColors.Silver}] {ChatColors.LightRed}Failed to get the shared API.");
+			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.LightRed}Failed to get the shared API.");
+			return;
+		}
+
+		//new chatgpt
+		var playerPosition = player.PlayerPawn.Value?.AbsOrigin;
+		if (playerPosition == null)
+		{
+			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.Red}Could not determine player position.");
 			return;
 		}
 
 		var target = _currentTopLists
 			.SelectMany(id => checkAPI.GetWorldTextLineEntities(id)?.Select(entity => new { Id = id, Entity = entity }) ?? Enumerable.Empty<dynamic>())
-			.Where(x => x.Entity.AbsOrigin != null && player.PlayerPawn.Value?.AbsOrigin != null && DistanceTo(x.Entity.AbsOrigin, player.PlayerPawn.Value!.AbsOrigin) < 100)
-			.OrderBy(x => x.Entity.AbsOrigin != null && player.PlayerPawn.Value?.AbsOrigin != null ? DistanceTo(x.Entity.AbsOrigin, player.PlayerPawn.Value!.AbsOrigin) : float.MaxValue)
+			.Where(x => x.Entity.AbsOrigin != null && DistanceTo(x.Entity.AbsOrigin, playerPosition) < 100)
+			.OrderBy(x => DistanceTo(x.Entity.AbsOrigin, playerPosition))
 			.FirstOrDefault();
 
 		if (target is null)
 		{
-			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}K4-TopList {ChatColors.Silver}] {ChatColors.Red}Move closer to the Toplist that you want to remove.");
+			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.Red}Move closer to the list that you want to remove.");
 			return;
 		}
 
 		checkAPI.RemoveWorldText(target.Id);
-		_currentTopLists.Remove(target.Id);
+		RemoveFromCurrentTopLists(target.Id);
 
 		var mapName = Server.MapName;
-		var path = Path.Combine(ModuleDirectory, $"{mapName}_toplists.json");
+		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 		if (File.Exists(path))
 		{
-			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path));
+			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions);
 			if (data != null)
 			{
-				data.RemoveAll(x => x.Location == target.Entity.AbsOrigin.ToString() && x.Rotation == target.Entity.AbsRotation.ToString());
-				File.WriteAllText(path, JsonSerializer.Serialize(data));
+				var targetLocation = SerializeVector(target.Entity.AbsOrigin);
+				var targetRotation = SerializeQAngle(target.Entity.AbsRotation);
+
+				data.RemoveAll(x => x.Location == targetLocation && x.Rotation == targetRotation);
+
+				File.WriteAllText(path, JsonSerializer.Serialize(data, JsonSerializerOptions));
 			}
 		}
 
-		command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}K4-TopList {ChatColors.Silver}] {ChatColors.Green}Toplist removed!");
+		command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.Green}List removed!");
 	}
 
 	private float DistanceTo(Vector a, Vector b)
@@ -211,20 +226,36 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
+	private static readonly JsonSerializerOptions JsonSerializerOptions = new JsonSerializerOptions
+	{
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+		WriteIndented = true,
+		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+	};
+	
+	private string SerializeVector(Vector vector)
+	{
+		return $"{vector.X} {vector.Y} {vector.Z}";
+	}
+
+	private string SerializeQAngle(QAngle qangle)
+	{
+		return $"{qangle.X} {qangle.Y} {qangle.Z}";
+	}
 	private void SaveWorldTextToFile(Vector location, QAngle rotation)
 	{
 		var mapName = Server.MapName;
-		var path = Path.Combine(ModuleDirectory, $"{mapName}_toplists.json");
+		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 		var worldTextData = new WorldTextData
 		{
-			Location = location.ToString(),
-			Rotation = rotation.ToString()
+			Location = SerializeVector(location),
+        	Rotation = SerializeQAngle(rotation)
 		};
 
 		List<WorldTextData> data;
 		if (File.Exists(path))
 		{
-			data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path)) ?? new List<WorldTextData>();
+			data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions) ?? new List<WorldTextData>();
 		}
 		else
 		{
@@ -233,22 +264,22 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		data.Add(worldTextData);
 
-		File.WriteAllText(path, JsonSerializer.Serialize(data));
+		File.WriteAllText(path, JsonSerializer.Serialize(data, JsonSerializerOptions));
 	}
 
-	private void LoadWorldTextFromFile()
+	private void LoadWorldTextFromFile(string mapName)
 	{
-		var mapName = Server.MapName;
-		var path = Path.Combine(ModuleDirectory, $"{mapName}_toplists.json");
+		
+		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 
 		if (File.Exists(path))
 		{
-			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path));
+			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions);
 			if (data == null) return;
 
-			Task.Run(async () =>
+			_ = Task.Run(async () =>
 			{
-				var topList = await GetTopPlayersAsync(Config.TopCount);
+				var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
 				var linesList = GetTopListTextLines(topList);
 
 				Server.NextWorldUpdate(() =>
@@ -261,7 +292,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 						if (!string.IsNullOrEmpty(worldTextData.Location) && !string.IsNullOrEmpty(worldTextData.Rotation))
 						{
 							var messageID = checkAPI.AddWorldText(TextPlacement.Wall, linesList, ParseVector(worldTextData.Location), ParseQAngle(worldTextData.Rotation));
-							_currentTopLists.Add(messageID);
+							AddToCurrentTopLists(messageID);
 						}
 					}
 				});
@@ -279,6 +310,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		{
 			return new Vector(x, y, z);
 		}
+
 		throw new ArgumentException("Invalid vector string format.");
 	}
 
@@ -294,12 +326,36 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		}
 		throw new ArgumentException("Invalid QAngle string format.");
 	}
+    private void AddToCurrentTopLists(int messageID)
+    {
+        lock (_currentTopLists)
+        {
+            _currentTopLists.Add(messageID);
+        }
+    }
 
+    private void RemoveFromCurrentTopLists(int messageID)
+    {
+        lock (_currentTopLists)
+        {
+            _currentTopLists.Remove(messageID);
+        }
+    }
+
+    private void ClearCurrentTopLists()
+    {
+        lock (_currentTopLists)
+        {
+            _currentTopLists.Clear();
+        }
+    }
 	private void RefreshTopLists()
 	{
-		Task.Run(async () =>
+		var mapName = Server.MapName;
+		
+		_ = Task.Run(async () =>
 		{
-			var topList = await GetTopPlayersAsync(Config.TopCount);
+			var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
 			var linesList = GetTopListTextLines(topList);
 
 			Server.NextWorldUpdate(() =>
@@ -319,15 +375,47 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		});
 	}
 
+
+	private string TruncateString(string value, int maxLength)
+	{
+		if (string.IsNullOrEmpty(value)) return value;
+		return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+	}
 	private List<TextLine> GetTopListTextLines(List<PlayerPlace> topList)
 	{
+		Color ParseColor(string colorName)
+		{
+			try
+			{
+				var colorProperty = typeof(Color).GetProperty(colorName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+				if (colorProperty == null)
+				{
+					throw new ArgumentException($"Invalid color name: {colorName}");
+				}
+
+				var colorValue = colorProperty.GetValue(null);
+				if (colorValue == null)
+				{
+					throw new InvalidOperationException($"Color property '{colorName}' has no value.");
+				}
+
+				return (Color)colorValue;
+			}
+			catch (Exception ex)
+			{
+				Logger.LogWarning(ex, $"Invalid color name: {colorName}. Falling back to White.");
+				return Color.White;
+			}
+		}
+
+		int maxNameLength = Config.MaxNameLength;
 		var linesList = new List<TextLine>
 		{
 			new TextLine
 			{
 				Text = Config.TitleText,
-				Color = Color.Pink,
-				FontSize = 24,
+				Color = ParseColor(Config.TitleTextColor),
+				FontSize = 26,
 				FullBright = true,
 				Scale = 0.45f
 			}
@@ -336,17 +424,18 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		for (int i = 0; i < topList.Count; i++)
 		{
 			var topplayer = topList[i];
+			var truncatedName = TruncateString(topplayer.PlayerName, maxNameLength);
 			var color = i switch
 			{
-				0 => Color.Red,
-				1 => Color.Orange,
-				2 => Color.Yellow,
-				_ => Color.White
+				0 => ParseColor(Config.FirstPlaceColor),
+				1 => ParseColor(Config.SecondPlaceColor),
+				2 => ParseColor(Config.ThirdPlaceColor),
+				_ => ParseColor(Config.DefaultColor)
 			};
 
 			linesList.Add(new TextLine
 			{
-				Text = $"{i + 1}. {topplayer.Name} - {topplayer.Points} points",
+				Text = $"{i + 1}. {topplayer.FormattedTime} - {truncatedName}",
 				Color = color,
 				FontSize = 24,
 				FullBright = true,
@@ -357,7 +446,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		return linesList;
 	}
 
-	public async Task<List<PlayerPlace>> GetTopPlayersAsync(int topCount)
+	public async Task<List<PlayerPlace>> GetTopPlayersAsync(int topCount, string mapName)
 	{
 		try
 		{
@@ -367,36 +456,46 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 				Uid={dbSettings.Username};Pwd={dbSettings.Password};
 				SslMode={Enum.Parse<MySqlSslMode>(dbSettings.Sslmode, true)};"))
 			{
-				string query = $@"
-                WITH RankedPlayers AS (
-                    SELECT
-                        steam_id,
-                        name,
-                        points,
-                        DENSE_RANK() OVER (ORDER BY points DESC) AS playerPlace
-                    FROM `{dbSettings.TablePrefix}k4ranks`
-                )
-                SELECT steam_id, name, points, playerPlace
-                FROM RankedPlayers
-                ORDER BY points DESC
-                LIMIT @TopCount";
+				string query = @"
+				WITH RankedPlayers AS (
+					SELECT
+						SteamID,
+						PlayerName,
+						FormattedTime,
+						DENSE_RANK() OVER (ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC) AS playerPlace
+					FROM PlayerRecords
+					WHERE MapName = @MapName
+				)
+				SELECT SteamID, PlayerName, FormattedTime, playerPlace
+				FROM RankedPlayers
+				ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC
+				LIMIT @TopCount";
 
-				return (await connection.QueryAsync<PlayerPlace>(query, new { TopCount = topCount })).ToList();
+				var parameters = new { TopCount = topCount, MapName = mapName };
+				return (await connection.QueryAsync<PlayerPlace>(query, parameters)).ToList();
 			}
+		}
+
+		catch (MySqlException ex)
+		{
+			Logger.LogError(ex, "Failed to retrieve top players: {Message}", ex.Message);
+			return new List<PlayerPlace>();
 		}
 		catch (Exception ex)
 		{
-			Logger.LogError(ex, "Failed to retrieve top players");
+			Logger.LogError(ex, "An unexpected error occurred: {Message}", ex.Message);
 			return new List<PlayerPlace>();
 		}
 	}
 }
 
+
 public class PlayerPlace
 {
-	public required string Name { get; set; }
-	public int Points { get; set; }
-	public int Placement { get; set; }
+    public string SteamID { get; set; } = "";
+    public string PlayerName { get; set; } = "";
+    public string FormattedTime { get; set; } = "";
+    public int playerPlace { get; set; }
 }
 
 public class WorldTextData
