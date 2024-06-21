@@ -1,26 +1,19 @@
 <a name="readme-top"></a>
 
-![GitHub tag (with filter)](https://img.shields.io/github/v/tag/K4ryuu/K4-System-WallToplist?style=for-the-badge&label=Version)
-![GitHub Repo stars](https://img.shields.io/github/stars/K4ryuu/K4-System-WallToplist?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues/K4ryuu/K4-System-WallToplist?style=for-the-badge)
-![GitHub](https://img.shields.io/github/license/K4ryuu/K4-System-WallToplist?style=for-the-badge)
-![GitHub all releases](https://img.shields.io/github/downloads/K4ryuu/K4-System-WallToplist/total?style=for-the-badge)
-![GitHub last commit (branch)](https://img.shields.io/github/last-commit/K4ryuu/K4-System-WallToplist/dev?style=for-the-badge)
+> [!CAUTION]
+> All plugin credits go to [K4ryuu](https://github.com/K4ryuu)! All I did was make a few small changes for it to work with SharpTimer.
 
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
   <h1 align="center">KitsuneLab©</h1>
-  <h3 align="center">K4-System @ Wall Toplist</h3>
-  <a align="center">A simple wall toplist to display top x players on your map walls. Dynamically updates on given interval or if its disabled on round starts.</a>
+  <h3 align="center">SharpTimer Map Record List</h3>
+  <a align="center">A simple list to display the top map times for the active map on your map walls. Dynamically updates on given interval or if its disabled on round starts.</a>
+  <img src="https://files.catbox.moe/pkarm0.png" alt="" style="margin: 0;">
 
   <p align="center">
     <br />
-    <a href="https://github.com/K4ryuu/K4-System-WallToplist/releases">Download</a>
-    ·
-    <a href="https://github.com/K4ryuu/K4-System-WallToplist/issues/new?assignees=KitsuneLab-Development&labels=bug&projects=&template=bug_report.md&title=%5BBUG%5D">Report Bug</a>
-    ·
-    <a href="https://github.com/K4ryuu/K4-System-WallToplist/issues/new?assignees=KitsuneLab-Development&labels=enhancement&projects=&template=feature_request.md&title=%5BREQ%5D">Request Feature</a>
+    <a href="https://github.com/M-archand/SharpTimer-WallLists/releases/">Download</a>
   </p>
 </div>
 
@@ -31,23 +24,26 @@
 To use this server addon, you'll need the following dependencies installed:
 
 - [**CounterStrikeSharp**](https://github.com/roflmuffin/CounterStrikeSharp/releases): CounterStrikeSharp allows you to write server plugins in C# for Counter-Strike 2/Source2/CS2
-- [**K4-System**](https://github.com/K4ryuu/K4-System): K4-Systems is a plugin that enhances the server with features such as a playtime tracker, statistical records, and player ranks. Additionally, it includes VIP functions and admin commands for added functionality.
 - [**K4-WorldText-API**](https://github.com/K4ryuu/K4-WorldText-API): This is a shared developer API to handle world texts (even multiline, dynamically changing and config saved ones) easily, but in the other hand end users can also use it to spawn world texts as they want and manage them per map.
-
+- [**SharpTimer**](https://github.com/Letaryat/poor-sharptimer): SharpTimer is a "simple" Surf/KZ/Bhop/MG/Deathrun/etc. CS2 Timer plugin using CounterStrikeSharp.
+  
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- ROADMAP -->
 
 ## Commands (root)
 
-- css_k4toplist - Create a toplist in front of the player and save it to config file.
-- css_k4toprem - Remove closest k4toplist from your position. (100 units max)
+- !maplist - Create a points list in front of the player and save it to config file.
+- !maprem - Remove closest points list from your position. (100 units max) (CURRENTLY BROKEN & I'm too dumb to fix it :P)
 
 <!-- ROADMAP -->
 
 ## Roadmap
 
-- [ ] No plans yet.
+- [X] Update for SharpTimer usage.
+- [X] Add color configs. See [here](https://i.sstatic.net/lsuz4.png) for color names.
+- [X] Ability to truncate player name.
+- [ ] Fix !maprem
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
