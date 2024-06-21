@@ -15,22 +15,35 @@ using MySqlConnector;
 using System.Text.Json;
 using CounterStrikeSharp.API.Modules.Timers;
 
-namespace K4Toplist;
+namespace SharpTimerMapList;
 
 public class PluginConfig : BasePluginConfig
 {
-	[JsonPropertyName("TopCount")]
+	[JsonPropertyName("topCount")]
 	public int TopCount { get; set; } = 5;
-	[JsonPropertyName("TimeBasedUpdate")]
+	[JsonPropertyName("timeBasedUpdate")]
 	public bool TimeBasedUpdate { get; set; } = false;
-	[JsonPropertyName("UpdateInterval")]
+	[JsonPropertyName("updateInterval")]
 	public int UpdateInterval { get; set; } = 60;
-	[JsonPropertyName("DatabaseSettings")]
+	[JsonPropertyName("databaseSettings")]
 	public DatabaseSettings DatabaseSettings { get; set; } = new DatabaseSettings();
-	[JsonPropertyName("TitleText")]
-	public string TitleText { get; set; } = "----- Toplist -----";
-	[JsonPropertyName("ConfigVersion")]
-	public override int Version { get; set; } = 3;
+	[JsonPropertyName("titleText")]
+	public string TitleText { get; set; } = "---- Map Records ----";
+	[JsonPropertyName("maxNameLength")]
+	public int MaxNameLength { get; set; } = 20;
+	
+	[JsonPropertyName("titleTextColor")]
+	public string TitleTextColor { get; set; } = "Pink";
+	[JsonPropertyName("firstPlaceColor")]
+	public string FirstPlaceColor { get; set; } = "Lime";
+	[JsonPropertyName("secondPlaceColor")]
+	public string SecondPlaceColor { get; set; } = "Cyan";
+	[JsonPropertyName("thirdPlaceColor")]
+	public string ThirdPlaceColor { get; set; } = "Purple";
+	[JsonPropertyName("defaultColor")]
+	public string DefaultColor { get; set; } = "White";
+	[JsonPropertyName("configVersion")]
+	public override int Version { get; set; } = 4;
 }
 
 public sealed class DatabaseSettings
@@ -47,8 +60,6 @@ public sealed class DatabaseSettings
 	public int Port { get; set; } = 3306;
 	[JsonPropertyName("sslmode")]
 	public string Sslmode { get; set; } = "none";
-	[JsonPropertyName("table-prefix")]
-	public string TablePrefix { get; set; } = "";
 }
 
 [MinimumApiVersion(205)]
