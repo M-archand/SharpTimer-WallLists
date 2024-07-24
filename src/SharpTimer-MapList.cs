@@ -253,15 +253,25 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 		if (File.Exists(path))
 		{
-			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions);
+			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path));
 			if (data != null)
 			{
-				var targetLocation = SerializeVector(target.Entity.AbsOrigin);
-				var targetRotation = SerializeQAngle(target.Entity.AbsRotation);
+				Vector entityVector = target.Entity.AbsOrigin;
+				data.RemoveAll(x =>
+				{
+					Vector location = ParseVector(x.Location);
+					return location.X == entityVector.X &&
+						   location.Y == entityVector.Y &&
+						   x.Rotation == target.Entity.AbsRotation.ToString();
+				});
 
-				data.RemoveAll(x => x.Location == targetLocation && x.Rotation == targetRotation);
+				var options = new JsonSerializerOptions
+				{
+					WriteIndented = true
+				};
 
-				File.WriteAllText(path, JsonSerializer.Serialize(data, JsonSerializerOptions));
+				string jsonString = JsonSerializer.Serialize(data, options);
+				File.WriteAllText(path, jsonString);
 			}
 		}
 
@@ -276,12 +286,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
-	private static readonly JsonSerializerOptions JsonSerializerOptions = new JsonSerializerOptions
-	{
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-		WriteIndented = true,
-		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-	};
+
 	
 	private string SerializeVector(Vector vector)
 	{
@@ -305,7 +310,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		List<WorldTextData> data;
 		if (File.Exists(path))
 		{
-			data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions) ?? new List<WorldTextData>();
+			data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path)) ?? new List<WorldTextData>();
 		}
 		else
 		{
@@ -314,7 +319,13 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		data.Add(worldTextData);
 
-		File.WriteAllText(path, JsonSerializer.Serialize(data, JsonSerializerOptions));
+		var options = new JsonSerializerOptions
+		{
+			WriteIndented = true
+		};
+
+		string jsonString = JsonSerializer.Serialize(data, options);
+		File.WriteAllText(path, jsonString);
 	}
 
 	private void LoadWorldTextFromFile(string mapName)
@@ -324,7 +335,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		if (File.Exists(path))
 		{
-			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path), JsonSerializerOptions);
+			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path));
 			if (data == null) return;
 
 			_ = Task.Run(async () =>
@@ -465,9 +476,9 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			{
 				Text = Config.TitleText,
 				Color = ParseColor(Config.TitleTextColor),
-				FontSize = 26,
+				FontSize = Config.TitleFontSize,
 				FullBright = true,
-				Scale = 0.45f
+				Scale = Config.TitleTextScale
 			}
 		};
 
@@ -487,9 +498,9 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			{
 				Text = $"{i + 1}. {topplayer.FormattedTime} - {truncatedName}",
 				Color = color,
-				FontSize = 24,
+				FontSize = Config.ListFontSize,
 				FullBright = true,
-				Scale = 0.35f,
+				Scale = Config.ListTextScale
 			});
 		}
 
@@ -498,15 +509,44 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	public async Task<List<PlayerPlace>> GetTopPlayersAsync(int topCount, string mapName)
 	{
-		try
-		{
-			var dbSettings = Config.DatabaseSettings;
-
-			using (var connection = new MySqlConnection($@"Server={dbSettings.Host};Port={dbSettings.Port};Database={dbSettings.Database};
-				Uid={dbSettings.Username};Pwd={dbSettings.Password};
-				SslMode={Enum.Parse<MySqlSslMode>(dbSettings.Sslmode, true)};"))
+		if (Config.DatabaseType == 1)
+		{	
+			try
 			{
-				string query = @"
+				using (var connection = new MySqlConnection(_connectionString))
+				{
+					string query = $@"
+					WITH RankedPlayers AS (
+						SELECT
+							SteamID,
+							PlayerName,
+							FormattedTime,
+							DENSE_RANK() OVER (ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC) AS playerPlace
+						FROM PlayerRecords
+						WHERE MapName = @MapName
+					)
+					SELECT SteamID, PlayerName, FormattedTime, playerPlace
+					FROM RankedPlayers
+					ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC
+					LIMIT @TopCount";
+
+					var parameters = new { TopCount = topCount, MapName = mapName };
+					return (await connection.QueryAsync<PlayerPlace>(query, parameters)).ToList();
+				}
+			}
+			catch (Exception ex)
+			{
+				Logger.LogError(ex, "Failed to retrieve map records from MySQL, please check your database credentials in the config");
+				return new List<PlayerPlace>();
+			}
+		}
+
+		else if (Config.DatabaseType == 2)
+		{
+			using (var connection = new SQLiteConnection(_connectionString))
+			{
+				connection.Open();
+				string query = $@"
 				WITH RankedPlayers AS (
 					SELECT
 						SteamID,
@@ -525,15 +565,40 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 				return (await connection.QueryAsync<PlayerPlace>(query, parameters)).ToList();
 			}
 		}
+		else if (Config.DatabaseType == 3)
+		{
+			try
+			{
+				using (var connection = new NpgsqlConnection(_connectionString))
+				{
+					string query = $@"
+					WITH RankedPlayers AS (
+						SELECT
+							""SteamID"",
+							""PlayerName"",
+							""FormattedTime"",
+							DENSE_RANK() OVER (ORDER BY to_timestamp(""FormattedTime"", 'MI:SS.US') ASC) AS playerPlace
+						FROM ""PlayerRecords""
+						WHERE ""MapName"" = @MapName
+					)
+					SELECT ""SteamID"", ""PlayerName"", ""FormattedTime"", playerPlace
+					FROM RankedPlayers
+					ORDER BY to_timestamp(""FormattedTime"", 'MI:SS.US') ASC
+					LIMIT @TopCount";
 
-		catch (MySqlException ex)
-		{
-			Logger.LogError(ex, "Failed to retrieve top players: {Message}", ex.Message);
-			return new List<PlayerPlace>();
+					var parameters = new { TopCount = topCount, MapName = mapName };
+					return (await connection.QueryAsync<PlayerPlace>(query, parameters)).ToList();
+				}
+			}
+			catch (Exception ex)
+			{
+				Logger.LogError(ex, "Failed to retrieve map records from PostgreSQL, please check your database credentials in the config");
+				return new List<PlayerPlace>();
+			}
 		}
-		catch (Exception ex)
+		else
 		{
-			Logger.LogError(ex, "An unexpected error occurred: {Message}", ex.Message);
+			Logger.LogError("Invalid DatabaseType specified in config");
 			return new List<PlayerPlace>();
 		}
 	}
@@ -542,10 +607,8 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 public class PlayerPlace
 {
-    public string SteamID { get; set; } = "";
-    public string PlayerName { get; set; } = "";
+    public required string PlayerName { get; set; } = "";
     public string FormattedTime { get; set; } = "";
-    public int playerPlace { get; set; }
 }
 
 public class WorldTextData
