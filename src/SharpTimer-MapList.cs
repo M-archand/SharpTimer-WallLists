@@ -84,6 +84,9 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	private readonly List<int> _currentMapList = new();
 	private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
+	private string _gameDirectory = Server.GameDirectory;
+	private string? _databasePath;
+    private string? _connectionString;
 
 	public void OnConfigParsed(PluginConfig config)
 	{
@@ -95,6 +98,8 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	public override void OnAllPluginsLoaded(bool hotReload)
 	{
+		InitializeDatabasePathAndConnectionString();
+		
 		AddTimer(3, () => LoadWorldTextFromFile(Server.MapName));
 
 		if (Config.TimeBasedUpdate)
@@ -122,12 +127,46 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	public override void Unload(bool hotReload)
 	{
-		foreach (int messageID in _currentMapList)
-		{
-			Capability_SharedAPI.Get()?.RemoveWorldText(messageID);
-		}
-		ClearCurrentTopLists();
+		var checkAPI = Capability_SharedAPI.Get();
+		if (checkAPI != null)
+			_currentMapList.ForEach(id => checkAPI.RemoveWorldText(id, false));
+		_currentMapList.Clear();
 		_updateTimer?.Kill();
+	}
+	private void InitializeDatabasePathAndConnectionString()
+	{
+		var dbSettings = Config.DatabaseSettings;
+		if (Config.DatabaseType == 1)
+		{
+			var mySqlSslMode = dbSettings.Sslmode.ToLower() switch
+			{
+				"none" => MySqlSslMode.None,
+				"preferred" => MySqlSslMode.Preferred,
+				"required" => MySqlSslMode.Required,
+				"verifyca" => MySqlSslMode.VerifyCA,
+				"verifyfull" => MySqlSslMode.VerifyFull,
+				_ => MySqlSslMode.None
+			};
+			_connectionString = $@"Server={dbSettings.Host};Port={dbSettings.Port};Database={dbSettings.Database};Uid={dbSettings.Username};Pwd={dbSettings.Password};SslMode={mySqlSslMode};";
+		}
+		else if (Config.DatabaseType == 2)
+		{
+			_databasePath = Path.Combine(_gameDirectory, "csgo", "cfg", "SharpTimer", "database.db");
+			_connectionString = $"Data Source={_databasePath};Version=3;";
+		}
+		else if (Config.DatabaseType == 3)
+		{
+		var npgSqlSslMode = dbSettings.Sslmode.ToLower() switch
+			{
+				"disable" => SslMode.Disable,
+				"require" => SslMode.Require,
+				"prefer" => SslMode.Prefer,
+				"allow" => SslMode.Allow,
+				"verify-full" => SslMode.VerifyFull,
+				_ => SslMode.Disable
+			};
+			_connectionString = $"Host={dbSettings.Host};Port={dbSettings.Port};Database={dbSettings.Database};Username={dbSettings.Username};Password={dbSettings.Password};SslMode={npgSqlSslMode};";
+		}
 	}
 
 	[ConsoleCommand("css_maplist", "Sets up the map top list")]
