@@ -104,24 +104,26 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		if (Config.TimeBasedUpdate)
 		{
-			_updateTimer = AddTimer(Config.UpdateInterval, RefreshTopLists, TimerFlags.REPEAT);
+			_updateTimer = AddTimer(Config.UpdateInterval, RefreshMapList, TimerFlags.REPEAT);
 		}
 
 		RegisterEventHandler((EventRoundStart @event, GameEventInfo info) =>
 		{
-			RefreshTopLists();
+			RefreshMapList();
 			return HookResult.Continue;
 		});
 
 		RegisterListener<Listeners.OnMapStart>((mapName) =>
 		{
-			var mapNameString = mapName;
-			AddTimer(1, () => LoadWorldTextFromFile(mapNameString));
+			AddTimer(1, () => LoadWorldTextFromFile(mapName));
 		});
 
 		RegisterListener<Listeners.OnMapEnd>(() =>
 		{
-			ClearCurrentTopLists();
+			var checkAPI = Capability_SharedAPI.Get();
+			if (checkAPI != null)
+				_currentMapList.ForEach(id => checkAPI.RemoveWorldText(id, false));
+			_currentMapList.Clear();
 		});
 	}
 
@@ -182,15 +184,15 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 		var mapName = Server.MapName;
 
-		_ = Task.Run(async () =>
+		Task.Run(async () =>
 		{
-			var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
+			var topList = await GetTopPlayersAsync(Config.TopCount, mapName);
 			var linesList = GetTopListTextLines(topList);
 
 			Server.NextWorldUpdate(() =>
 			{
 				int messageID = checkAPI.AddWorldTextAtPlayer(player, TextPlacement.Wall, linesList);
-				AddToCurrentTopLists(messageID);
+				_currentMapList.Add(messageID);
 
 				var lineList = checkAPI.GetWorldTextLineEntities(messageID);
 				if (lineList?.Count > 0)
@@ -226,7 +228,6 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			return;
 		}
 
-		//new chatgpt
 		var playerPosition = player.PlayerPawn.Value?.AbsOrigin;
 		if (playerPosition == null)
 		{
@@ -247,7 +248,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		}
 
 		checkAPI.RemoveWorldText(target.Id);
-		RemoveFromCurrentTopLists(target.Id);
+		_currentMapList.Remove(target.Id);
 
 		var mapName = Server.MapName;
 		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
@@ -328,9 +329,9 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		File.WriteAllText(path, jsonString);
 	}
 
-	private void LoadWorldTextFromFile(string mapName)
+	private void LoadWorldTextFromFile(string? passedMapName = null)
 	{
-		
+		var mapName = passedMapName ?? Server.MapName;
 		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 
 		if (File.Exists(path))
@@ -338,9 +339,9 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			var data = JsonSerializer.Deserialize<List<WorldTextData>>(File.ReadAllText(path));
 			if (data == null) return;
 
-			_ = Task.Run(async () =>
+			Task.Run(async () =>
 			{
-				var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
+				var topList = await GetTopPlayersAsync(Config.TopCount, mapName);
 				var linesList = GetTopListTextLines(topList);
 
 				Server.NextWorldUpdate(() =>
@@ -353,7 +354,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 						if (!string.IsNullOrEmpty(worldTextData.Location) && !string.IsNullOrEmpty(worldTextData.Rotation))
 						{
 							var messageID = checkAPI.AddWorldText(TextPlacement.Wall, linesList, ParseVector(worldTextData.Location), ParseQAngle(worldTextData.Rotation));
-							AddToCurrentTopLists(messageID);
+							_currentMapList.Add(messageID);
 						}
 					}
 				});
@@ -387,51 +388,22 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		}
 		throw new ArgumentException("Invalid QAngle string format.");
 	}
-    private void AddToCurrentTopLists(int messageID)
-    {
-        lock (_currentMapList)
-        {
-            _currentMapList.Add(messageID);
-        }
-    }
 
-    private void RemoveFromCurrentTopLists(int messageID)
-    {
-        lock (_currentMapList)
-        {
-            _currentMapList.Remove(messageID);
-        }
-    }
-
-    private void ClearCurrentTopLists()
-    {
-        lock (_currentMapList)
-        {
-            _currentMapList.Clear();
-        }
-    }
-	private void RefreshTopLists()
+	private void RefreshMapList()
 	{
 		var mapName = Server.MapName;
-		
-		_ = Task.Run(async () =>
+		Task.Run(async () =>
 		{
-			var topList = await GetTopPlayersAsync(Config.TopCount, mapName).ConfigureAwait(false);
+			var topList = await GetTopPlayersAsync(Config.TopCount, mapName);
 			var linesList = GetTopListTextLines(topList);
 
 			Server.NextWorldUpdate(() =>
 			{
-				AddTimer(1, () =>
+				var checkAPI = Capability_SharedAPI.Get();
+				if (checkAPI != null)
 				{
-					var checkAPI = Capability_SharedAPI.Get();
-					if (checkAPI != null)
-					{
-						foreach (int messageID in _currentMapList)
-						{
-							checkAPI.UpdateWorldText(messageID, linesList);
-						}
-					}
-				});
+					_currentMapList.ForEach(id => checkAPI.UpdateWorldText(id, linesList));
+				}
 			});
 		});
 	}
