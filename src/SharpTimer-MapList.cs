@@ -21,31 +21,40 @@ namespace SharpTimerMapList;
 
 public class PluginConfig : BasePluginConfig
 {
-	[JsonPropertyName("topCount")]
+	[JsonPropertyName("TopCount")]
 	public int TopCount { get; set; } = 5;
-	[JsonPropertyName("timeBasedUpdate")]
+	[JsonPropertyName("TimeBasedUpdate")]
 	public bool TimeBasedUpdate { get; set; } = false;
-	[JsonPropertyName("updateInterval")]
+	[JsonPropertyName("UpdateInterval")]
 	public int UpdateInterval { get; set; } = 60;
-	[JsonPropertyName("databaseSettings")]
+	[JsonPropertyName("DatabaseType")]
+	public int DatabaseType { get; set; } = 1; // 1 = MySQL, 2 = SQLite. 3 = Postgres
+	[JsonPropertyName("DatabaseSettings")]
 	public DatabaseSettings DatabaseSettings { get; set; } = new DatabaseSettings();
-	[JsonPropertyName("titleText")]
+	[JsonPropertyName("TitleText")]
 	public string TitleText { get; set; } = "---- Map Records ----";
-	[JsonPropertyName("maxNameLength")]
-	public int MaxNameLength { get; set; } = 20;
-	
-	[JsonPropertyName("titleTextColor")]
+	[JsonPropertyName("MaxNameLength")]
+	public int MaxNameLength { get; set; } = 32;
+	[JsonPropertyName("TitleFontSize")]
+    public int TitleFontSize { get; set; } = 26;
+	[JsonPropertyName("TitleTextScale")]
+    public float TitleTextScale { get; set; } = 0.45f;
+	[JsonPropertyName("ListFontSize")]
+    public int ListFontSize { get; set; } = 24;
+	[JsonPropertyName("ListTextScale")]
+    public float ListTextScale { get; set; } = 0.35f;
+	[JsonPropertyName("TitleTextColor")]
 	public string TitleTextColor { get; set; } = "Pink";
-	[JsonPropertyName("firstPlaceColor")]
+	[JsonPropertyName("FirstPlaceColor")]
 	public string FirstPlaceColor { get; set; } = "Lime";
-	[JsonPropertyName("secondPlaceColor")]
+	[JsonPropertyName("SecondPlaceColor")]
 	public string SecondPlaceColor { get; set; } = "Cyan";
-	[JsonPropertyName("thirdPlaceColor")]
+	[JsonPropertyName("ThirdPlaceColor")]
 	public string ThirdPlaceColor { get; set; } = "Purple";
-	[JsonPropertyName("defaultColor")]
+	[JsonPropertyName("DefaultColor")]
 	public string DefaultColor { get; set; } = "White";
-	[JsonPropertyName("configVersion")]
-	public override int Version { get; set; } = 4;
+	[JsonPropertyName("ConfigVersion")]
+	public override int Version { get; set; } = 5;
 }
 
 public sealed class DatabaseSettings
@@ -73,7 +82,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 	public required PluginConfig Config { get; set; } = new PluginConfig();
 	public static PluginCapability<IK4WorldTextSharedAPI> Capability_SharedAPI { get; } = new("k4-worldtext:sharedapi");
 
-	private readonly List<int> _currentTopLists = new();
+	private readonly List<int> _currentMapList = new();
 	private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
 	public void OnConfigParsed(PluginConfig config)
@@ -113,7 +122,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 
 	public override void Unload(bool hotReload)
 	{
-		foreach (int messageID in _currentTopLists)
+		foreach (int messageID in _currentMapList)
 		{
 			Capability_SharedAPI.Get()?.RemoveWorldText(messageID);
 		}
@@ -186,7 +195,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			return;
 		}
 
-		var target = _currentTopLists
+		var target = _currentMapList
 			.SelectMany(id => checkAPI.GetWorldTextLineEntities(id)?.Select(entity => new { Id = id, Entity = entity }) ?? Enumerable.Empty<dynamic>())
 			.Where(x => x.Entity.AbsOrigin != null && DistanceTo(x.Entity.AbsOrigin, playerPosition) < 100)
 			.OrderBy(x => DistanceTo(x.Entity.AbsOrigin, playerPosition))
@@ -330,25 +339,25 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 	}
     private void AddToCurrentTopLists(int messageID)
     {
-        lock (_currentTopLists)
+        lock (_currentMapList)
         {
-            _currentTopLists.Add(messageID);
+            _currentMapList.Add(messageID);
         }
     }
 
     private void RemoveFromCurrentTopLists(int messageID)
     {
-        lock (_currentTopLists)
+        lock (_currentMapList)
         {
-            _currentTopLists.Remove(messageID);
+            _currentMapList.Remove(messageID);
         }
     }
 
     private void ClearCurrentTopLists()
     {
-        lock (_currentTopLists)
+        lock (_currentMapList)
         {
-            _currentTopLists.Clear();
+            _currentMapList.Clear();
         }
     }
 	private void RefreshTopLists()
@@ -367,7 +376,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 					var checkAPI = Capability_SharedAPI.Get();
 					if (checkAPI != null)
 					{
-						foreach (int messageID in _currentTopLists)
+						foreach (int messageID in _currentMapList)
 						{
 							checkAPI.UpdateWorldText(messageID, linesList);
 						}
