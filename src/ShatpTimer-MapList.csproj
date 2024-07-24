@@ -18,6 +18,8 @@
     </PackageReference>
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="MySqlConnector" Version="2.3.7" />
+    <PackageReference Include="Npgsql" Version="8.0.3" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
     <Reference Include="K4WorldTextSharedApi">
       <HintPath>/Users/sples/Projects/GitHub/K4-WorldText-SharedAPI/src-shared/K4-WorldText-SharedAPI.dll</HintPath>
       <Private>true</Private>
