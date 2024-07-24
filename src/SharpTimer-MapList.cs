@@ -33,8 +33,6 @@ public class PluginConfig : BasePluginConfig
 	public DatabaseSettings DatabaseSettings { get; set; } = new DatabaseSettings();
 	[JsonPropertyName("TitleText")]
 	public string TitleText { get; set; } = "---- Map Records ----";
-	[JsonPropertyName("MaxNameLength")]
-	public int MaxNameLength { get; set; } = 32;
 	[JsonPropertyName("TitleFontSize")]
     public int TitleFontSize { get; set; } = 26;
 	[JsonPropertyName("TitleTextScale")]
@@ -43,6 +41,9 @@ public class PluginConfig : BasePluginConfig
     public int ListFontSize { get; set; } = 24;
 	[JsonPropertyName("ListTextScale")]
     public float ListTextScale { get; set; } = 0.35f;
+	[JsonPropertyName("MaxNameLength")]
+	public int MaxNameLength { get; set; } = 32; // Default value, 32 is max Steam name length
+	//List Colors
 	[JsonPropertyName("TitleTextColor")]
 	public string TitleTextColor { get; set; } = "Pink";
 	[JsonPropertyName("FirstPlaceColor")]
