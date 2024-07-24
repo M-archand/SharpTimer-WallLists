@@ -83,7 +83,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 	public required PluginConfig Config { get; set; } = new PluginConfig();
 	public static PluginCapability<IK4WorldTextSharedAPI> Capability_SharedAPI { get; } = new("k4-worldtext:sharedapi");
 
-	private readonly List<int> _currentMapList = new();
+	private List<int> _currentMapList = new();
 	private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 	private string _gameDirectory = Server.GameDirectory;
 	private string? _databasePath;
@@ -229,17 +229,10 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			return;
 		}
 
-		var playerPosition = player.PlayerPawn.Value?.AbsOrigin;
-		if (playerPosition == null)
-		{
-			command.ReplyToCommand($" {ChatColors.Silver}[ {ChatColors.Lime}MapList {ChatColors.Silver}] {ChatColors.Red}Could not determine player position.");
-			return;
-		}
-
 		var target = _currentMapList
 			.SelectMany(id => checkAPI.GetWorldTextLineEntities(id)?.Select(entity => new { Id = id, Entity = entity }) ?? Enumerable.Empty<dynamic>())
-			.Where(x => x.Entity.AbsOrigin != null && DistanceTo(x.Entity.AbsOrigin, playerPosition) < 100)
-			.OrderBy(x => DistanceTo(x.Entity.AbsOrigin, playerPosition))
+			.Where(x => x.Entity.AbsOrigin != null && player.PlayerPawn.Value?.AbsOrigin != null && DistanceTo(x.Entity.AbsOrigin, player.PlayerPawn.Value!.AbsOrigin) < 100)
+			.OrderBy(x => x.Entity.AbsOrigin != null && player.PlayerPawn.Value?.AbsOrigin != null ? DistanceTo(x.Entity.AbsOrigin, player.PlayerPawn.Value!.AbsOrigin) : float.MaxValue)
 			.FirstOrDefault();
 
 		if (target is null)
@@ -248,7 +241,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 			return;
 		}
 
-		checkAPI.RemoveWorldText(target.Id);
+		checkAPI.RemoveWorldText(target.Id, false);
 		_currentMapList.Remove(target.Id);
 
 		var mapName = Server.MapName;
@@ -288,25 +281,14 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 		return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
-
-	
-	private string SerializeVector(Vector vector)
-	{
-		return $"{vector.X} {vector.Y} {vector.Z}";
-	}
-
-	private string SerializeQAngle(QAngle qangle)
-	{
-		return $"{qangle.X} {qangle.Y} {qangle.Z}";
-	}
 	private void SaveWorldTextToFile(Vector location, QAngle rotation)
 	{
 		var mapName = Server.MapName;
 		var path = Path.Combine(ModuleDirectory, $"{mapName}_maplist.json");
 		var worldTextData = new WorldTextData
 		{
-			Location = SerializeVector(location),
-        	Rotation = SerializeQAngle(rotation)
+			Location = location.ToString(),
+			Rotation = rotation.ToString()
 		};
 
 		List<WorldTextData> data;
