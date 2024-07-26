@@ -79,7 +79,7 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 {
 	public override string ModuleName => "SharpTimer Map Top List";
 	public override string ModuleAuthor => "K4ryuu (SharpTimer edit by Marchand)";
-	public override string ModuleVersion => "1.0.2";
+	public override string ModuleVersion => "1.0.4";
 	public required PluginConfig Config { get; set; } = new PluginConfig();
 	public static PluginCapability<IK4WorldTextSharedAPI> Capability_SharedAPI { get; } = new("k4-worldtext:sharedapi");
 
@@ -507,13 +507,13 @@ public class PluginSharpTimerMapList : BasePlugin, IPluginConfig<PluginConfig>
 						SteamID,
 						PlayerName,
 						FormattedTime,
-						DENSE_RANK() OVER (ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC) AS playerPlace
+						DENSE_RANK() OVER (ORDER BY strftime('%M:%S.%f', FormattedTime) ASC) AS playerPlace
 					FROM PlayerRecords
 					WHERE MapName = @MapName
 				)
 				SELECT SteamID, PlayerName, FormattedTime, playerPlace
 				FROM RankedPlayers
-				ORDER BY STR_TO_DATE(FormattedTime, '%i:%s.%f') ASC
+				ORDER BY strftime('%M:%S.%f', FormattedTime) ASC
 				LIMIT @TopCount";
 
 				var parameters = new { TopCount = topCount, MapName = mapName };
